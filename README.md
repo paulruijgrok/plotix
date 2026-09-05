@@ -1,0 +1,94 @@
+# plotix
+
+Quick, beautiful plots of experimental data files. Point it at a raw instrument export and it gives you a publication-ready figure in PNG, PDF and SVG — plus the tidy CSV of exactly the numbers that were drawn, the way journals ask for figure source data. Each instrument format gets its own reader and its own purpose-built plot; everything they share (theming, export, peak finding, batch running) lives in one core.
+
+## Quick start
+
+```bash
+git clone https://github.com/paulruijgrok/plotix.git
+cd plotix
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+plotix fplc Data/FPLC/20260902_PfDh_Nb02P/20260902_PfLDH_Nb02P.asc -o figures
+```
+
+Expected output: `figures/` gains `20260902_PfLDH_Nb02P.{png,pdf,svg}` — a chromatogram with the UV trace, labelled peak volumes and a fraction band — alongside `..._source_data.csv` (every plotted point), `..._peaks.csv` (peak volumes, heights, widths, areas) and `..._marks.csv` (fraction and injection positions).
+
+From Python:
+
+```python
+import plotix
+
+plotix.plot_file("run.asc", "figures")          # figure + source data, one call
+
+bundle = plotix.plot("run.asc", auxiliary="Conductivity")
+bundle.source_data.head()                        # the numbers behind the figure
+bundle.figure.axes[0].set_xlim(5, 25)            # tweak, then save
+bundle.save("figures", formats=("pdf",))
+```
+
+## Installation
+
+### Requirements
+
+- Python ≥ 3.9
+- numpy ≥ 1.21, pandas ≥ 1.3, matplotlib ≥ 3.5, scipy ≥ 1.7, PyYAML ≥ 6.0
+
+All dependencies are pure pip installs; there are no compiled or external tools.
+
+### Setup
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"     # drop [dev] if you don't need pytest/ruff
+pytest                      # 87 tests, ~4 s
+```
+
+### Known gotchas
+
+- **`plotix: command not found` after install.** pip put the console script in a directory that isn't on `PATH` (it warns when it does). Either add that directory to `PATH` or use `python -m plotix` instead.
+- **Headless machines.** Set `MPLBACKEND=Agg` if matplotlib tries to open a display.
+- **Instrument encodings.** UNICORN exports appear as UTF-8, UTF-16 (with or without BOM) and Windows codepages depending on version and locale. plotix detects this; pass `encoding=` to the reader only if a file still comes out garbled.
+
+## Pipelines
+
+### FPLC chromatograms
+
+Reads ÄKTA / UNICORN ASCII exports (`.asc`) and produces a chromatogram: UV absorbance against elution volume as the visual subject, auxiliary channels (conductivity, %B, pressure, pH) on colour-matched offset axes, collected fractions as a band along the bottom, and peak volumes labelled on the trace. Auxiliary channels that never move are dropped automatically, so an isocratic SEC run gives a clean UV-only figure without being asked. [Full details](docs/fplc.md)
+
+```bash
+plotix fplc run.asc -o figures
+plotix fplc run.asc --auxiliary Conductivity "Concentration B" --max-peaks 3
+```
+
+## Batch processing
+
+Any format can be run unattended across a folder of datasets. The batch runner isolates failures (one corrupt export never costs you the rest of the run), skips work that is already done so an interrupted batch resumes on re-run, logs every dataset, and prints a summary of what succeeded and what failed. [Full details](docs/batch_processing.md)
+
+```bash
+plotix batch configs/batch_example.yaml
+plotix batch --inputs Data/FPLC -o figures --log figures/batch.log
+```
+
+## Adding a format
+
+New instruments plug into the same machinery. In short: write `reader.py` that returns a `Dataset` of `Curve`s and `Event`s, write `plot.py` that returns a `FigureBundle`, and register the pair with a `FormatSpec`. The CLI subcommand, format detection, source-data export and batch support all follow automatically. [Full details](docs/adding_a_format.md)
+
+## Repo map
+
+- `src/plotix/core/` — shared machinery: containers (`dataset`), theming (`theme`), plot primitives (`plotting`), figure and CSV export (`export`), peak detection (`peaks`), file decoding (`io`), format registry (`registry`), batch runner (`batch`)
+- `src/plotix/formats/` — one subpackage per instrument format (`fplc/` so far)
+- `src/plotix/cli.py` — command-line interface
+- `tests/` — pytest suite; run the whole thing before every commit
+- `configs/` — example batch configs
+- `docs/` — per-format and per-framework documentation
+- `Data/` — example raw data
+
+## Status
+
+**Stable:** the FPLC reader and chromatogram plot, the source-data export contract, the batch runner, and the CLI.
+
+**Experimental:** the theme system currently ships one theme (`publication`); the `Theme` dataclass and `register_theme` are in place for adding more, but the palette may still shift.
+
+**Planned:** additional formats (plate readers, spectra, gels), overlay plots comparing several runs on one axis, and per-format defaults loadable from a config file.

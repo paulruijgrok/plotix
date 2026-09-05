@@ -1,0 +1,40 @@
+# Example plotix batch config.
+#
+#   plotix batch configs/batch_example.yaml
+#
+# Command-line flags override anything set here, so a saved config can be
+# reused with a one-off change. See docs/batch_processing.md.
+
+# Files or folders to plot. Folders are searched recursively by default.
+inputs:
+  - Data/FPLC
+
+# Where figures and source-data CSVs are written.
+outdir: figures
+
+# Which files to pick up under each input folder.
+patterns:
+  - "*.asc"
+recursive: true
+
+formats:
+  - png
+  - pdf
+  - svg
+dpi: 300
+
+# false skips datasets whose figures already exist, so an interrupted run
+# resumes on re-run. Set true to re-plot everything.
+force: false
+
+# true gives each input its own subfolder under outdir.
+per_file_subdir: false
+
+log: figures/batch.log
+
+# Passed straight to the format's plot function — anything the Python API
+# accepts can be set here.
+plot:
+  auxiliary: auto      # auto | none | a list of channel names
+  max_peaks: 6
+  annotate_peaks_: true

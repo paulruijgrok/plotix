@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.venv/
+venv/
+env/
+
+# Testing / tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Plotix outputs
+figures/
+output/
+outputs/
+*.log
+
+# Data — keep small example files, ignore bulk raw data
+Data/**/*.zip
+Data/**/*.res
