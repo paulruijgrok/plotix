@@ -92,6 +92,52 @@ def test_cli_plot_switches(simple_asc, tmp_path):
     assert not (tmp_path / "run_peaks.csv").exists()
 
 
+def test_cli_plots_a_res_file(simple_res, tmp_path):
+    assert main(["fplc", str(simple_res), "-o", str(tmp_path), "-f", "png"]) == 0
+    assert (tmp_path / "run.png").exists()
+    assert (tmp_path / "run_source_data.csv").exists()
+
+
+def test_cli_origin_options(simple_res, tmp_path):
+    import pandas as pd
+
+    assert main(["fplc", str(simple_res), "-o", str(tmp_path), "-f", "png"]) == 0
+    zeroed = pd.read_csv(tmp_path / "run_peaks.csv")["Volume (ml)"].iloc[0]
+
+    raw_dir = tmp_path / "raw"
+    assert (
+        main(
+            [
+                "fplc",
+                str(simple_res),
+                "-o",
+                str(raw_dir),
+                "-f",
+                "png",
+                "--origin",
+                "start",
+                "--keep-pre-injection",
+            ]
+        )
+        == 0
+    )
+    raw = pd.read_csv(raw_dir / "run_peaks.csv")["Volume (ml)"].iloc[0]
+    # The synthetic run injects at 2.0 ml, so the two origins differ by that.
+    assert raw - zeroed == pytest.approx(2.0, abs=0.05)
+
+
+def test_cli_numeric_origin(simple_res, tmp_path):
+    import pandas as pd
+
+    assert (
+        main(["fplc", str(simple_res), "-o", str(tmp_path), "-f", "png", "--origin", "4"])
+        == 0
+    )
+    assert pd.read_csv(tmp_path / "run_peaks.csv")["Volume (ml)"].iloc[0] == pytest.approx(
+        4.0, abs=0.05
+    )
+
+
 def test_cli_version_and_help_exit_cleanly(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
@@ -102,17 +148,23 @@ def test_cli_version_and_help_exit_cleanly(capsys):
 # ------------------------------------------------------------------------ batch
 
 
-def test_discover_inputs_finds_files_and_accepts_explicit_paths(asc_factory, tmp_path):
+def test_discover_inputs_finds_files_and_accepts_explicit_paths(
+    asc_factory, res_factory, tmp_path
+):
     asc_factory("a.asc")
     nested = tmp_path / "sub"
     nested.mkdir()
     asc_factory("sub/b.asc")
+    res_factory("c.res")
 
     found = discover_inputs([tmp_path])
-    assert {p.name for p in found} == {"a.asc", "b.asc"}
+    assert {p.name for p in found} == {"a.asc", "b.asc", "c.res"}
 
     assert discover_inputs([tmp_path / "a.asc"]) == [(tmp_path / "a.asc").resolve()]
-    assert discover_inputs([tmp_path], recursive=False) == [(tmp_path / "a.asc").resolve()]
+    assert {p.name for p in discover_inputs([tmp_path], recursive=False)} == {
+        "a.asc",
+        "c.res",
+    }
     assert discover_inputs([tmp_path / "missing"]) == []
 
 

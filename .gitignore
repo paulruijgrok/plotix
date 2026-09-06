@@ -27,6 +27,7 @@ output/
 outputs/
 *.log
 
-# Data — keep small example files, ignore bulk raw data
+# Data — the example runs under Data/ are committed on purpose: the quick start
+# in the README runs on them, and the .res/.asc pair of the same run is what the
+# binary reader is cross-validated against. Ignore bulk archives only.
 Data/**/*.zip
-Data/**/*.res

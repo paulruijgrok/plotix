@@ -30,6 +30,14 @@ src/plotix/formats/myformat/
     plot.py
 ```
 
+An instrument that writes more than one file form (a native binary plus a text
+export, say) gets one module per form and a `reader.py` that dispatches between
+them on content — see `formats/fplc/`, which pairs `res.py` and `asc.py` behind
+`read_fplc`, with the vocabulary they share in `channels.py`. Both return the
+same `Dataset`, so the plot and everything downstream never learn which form
+was read. Register the union of the extensions in one `FormatSpec` rather than
+declaring two formats.
+
 **`reader.py`**
 
 ```python
@@ -111,6 +119,14 @@ Finally, import the subpackage in `src/plotix/formats/__init__.py` so registrati
 **Reuse the plotting primitives.** `style_axes`, `add_offset_axis`, `enforce_min_span`, `raise_axes`, `add_event_bands`, `add_event_lines`, `annotate_peaks` and `finish_figure` in `core.plotting` exist so every format's spines, secondary axes, event marks and title block behave identically. If you need something they don't do, add it there rather than locally — the next format will want it too.
 
 **Ship the numbers.** `source_data` must contain exactly what was drawn, and nothing that wasn't. Put derived quantities (peaks, integrals, fits) in `tables`, keyed by a name that becomes the CSV suffix.
+
+**Trust the data over its labels.** Where a format records the same fact twice —
+a channel's name and its unit, say — prefer whichever one the file derives from
+the measurement itself. Real `.res` files store channel names shifted by one
+against the curves they label, so a reader that trusted names would put the UV
+trace on the conductivity axis; the unit in each curve's own descriptor cannot
+drift that way. Cross-check when you can, and write a test with the awkward
+variant baked in.
 
 **Prefer dropping to shouting.** If a channel carries no information for a given run, leave it out of the default figure rather than giving it an axis. If it is drawn anyway, hold its axis open with `enforce_min_span` so autoscaling can't magnify noise into an apparent signal. See the two design decisions in [docs/fplc.md](fplc.md) for the worked example.
 

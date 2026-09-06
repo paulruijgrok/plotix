@@ -1,6 +1,8 @@
 # plotix
 
-Quick, beautiful plots of experimental data files. Point it at a raw instrument export and it gives you a publication-ready figure in PNG, PDF and SVG — plus the tidy CSV of exactly the numbers that were drawn, the way journals ask for figure source data. Each instrument format gets its own reader and its own purpose-built plot; everything they share (theming, export, peak finding, batch running) lives in one core.
+Quick, beautiful plots of experimental data files. Point it at a raw instrument file and it gives you a publication-ready figure in PNG, PDF and SVG — plus the tidy CSV of exactly the numbers that were drawn, the way journals ask for figure source data. Each instrument format gets its own reader and its own purpose-built plot; everything they share (theming, export, peak finding, batch running) lives in one core.
+
+For ÄKTA FPLC runs it reads the instrument's **native `.res` file directly**, so there is no export step between finishing a run and having a figure.
 
 ## Quick start
 
@@ -10,19 +12,19 @@ cd plotix
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-plotix fplc Data/FPLC/20260902_PfDh_Nb02P/20260902_PfLDH_Nb02P.asc -o figures
+plotix fplc "Data/FPLC/20260902_PfDh_Nb02P/20260902 Nb02P 60 ul plus PfLDH 100 ul incub 20min001.res" -o figures
 ```
 
-Expected output: `figures/` gains `20260902_PfLDH_Nb02P.{png,pdf,svg}` — a chromatogram with the UV trace, labelled peak volumes and a fraction band — alongside `..._source_data.csv` (every plotted point), `..._peaks.csv` (peak volumes, heights, widths, areas) and `..._marks.csv` (fraction and injection positions).
+Expected output: `figures/` gains a `.png`, `.pdf` and `.svg` of the chromatogram — UV trace, labelled peak volumes, fraction band — alongside `..._source_data.csv` (every plotted point), `..._peaks.csv` (peak volumes, heights, widths, areas) and `..._marks.csv` (fraction and injection positions).
 
 From Python:
 
 ```python
 import plotix
 
-plotix.plot_file("run.asc", "figures")          # figure + source data, one call
+plotix.plot_file("run.res", "figures")           # figure + source data, one call
 
-bundle = plotix.plot("run.asc", auxiliary="Conductivity")
+bundle = plotix.plot("run.res", auxiliary="Conductivity")
 bundle.source_data.head()                        # the numbers behind the figure
 bundle.figure.axes[0].set_xlim(5, 25)            # tweak, then save
 bundle.save("figures", formats=("pdf",))
@@ -42,25 +44,28 @@ All dependencies are pure pip installs; there are no compiled or external tools.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"     # drop [dev] if you don't need pytest/ruff
-pytest                      # 87 tests, ~4 s
+pytest                      # 117 tests, ~5 s
 ```
 
 ### Known gotchas
 
 - **`plotix: command not found` after install.** pip put the console script in a directory that isn't on `PATH` (it warns when it does). Either add that directory to `PATH` or use `python -m plotix` instead.
 - **Headless machines.** Set `MPLBACKEND=Agg` if matplotlib tries to open a display.
-- **Instrument encodings.** UNICORN exports appear as UTF-8, UTF-16 (with or without BOM) and Windows codepages depending on version and locale. plotix detects this; pass `encoding=` to the reader only if a file still comes out garbled.
+- **Instrument encodings.** UNICORN ASCII exports appear as UTF-8, UTF-16 (with or without BOM) and Windows codepages depending on version and locale. plotix detects this; pass `encoding=` to the reader only if a file still comes out garbled.
+- **`.res` support is reverse-engineered.** The format is undocumented, and this reader was worked out against UNICORN 3.10 files. It identifies channels from each curve's own axis descriptors rather than from recorded names, which is what makes it survive the naming quirks real files have — but a file from a very different UNICORN version may still need work. If one fails, the ASCII export is the fallback, and the file is worth reporting.
 
 ## Pipelines
 
 ### FPLC chromatograms
 
-Reads ÄKTA / UNICORN ASCII exports (`.asc`) and produces a chromatogram: UV absorbance against elution volume as the visual subject, auxiliary channels (conductivity, %B, pressure, pH) on colour-matched offset axes, collected fractions as a band along the bottom, and peak volumes labelled on the trace. Auxiliary channels that never move are dropped automatically, so an isocratic SEC run gives a clean UV-only figure without being asked. [Full details](docs/fplc.md)
+Reads ÄKTA / UNICORN runs — either the instrument's native `.res` result file or the `.asc` ASCII export — and produces a chromatogram: UV absorbance against elution volume as the visual subject, auxiliary channels (conductivity, %B, pressure, pH) on colour-matched offset axes, collected fractions as a band along the bottom, and peak volumes labelled on the trace. Auxiliary channels that never move are dropped automatically, so an isocratic SEC run gives a clean UV-only figure without being asked. [Full details](docs/fplc.md)
 
 ```bash
-plotix fplc run.asc -o figures
-plotix fplc run.asc --auxiliary Conductivity "Concentration B" --max-peaks 3
+plotix fplc run.res -o figures
+plotix fplc run.res --auxiliary Conductivity "Concentration B" --max-peaks 3
 ```
+
+Both file forms produce the same dataset and the same figure, so nothing downstream needs to know which one you used. Reading `.res` directly skips the export step, and gives roughly 15x more UV samples, since the ASCII export is decimated. The `.res` reader is checked against the ASCII export of the same run as part of the test suite; they agree to 0.014 mAU rms on a 8.9 mAU peak, with identical fraction marks and metadata.
 
 ## Batch processing
 
@@ -78,17 +83,17 @@ New instruments plug into the same machinery. In short: write `reader.py` that r
 ## Repo map
 
 - `src/plotix/core/` — shared machinery: containers (`dataset`), theming (`theme`), plot primitives (`plotting`), figure and CSV export (`export`), peak detection (`peaks`), file decoding (`io`), format registry (`registry`), batch runner (`batch`)
-- `src/plotix/formats/` — one subpackage per instrument format (`fplc/` so far)
+- `src/plotix/formats/` — one subpackage per instrument format (`fplc/` so far: `res.py` and `asc.py` readers, shared `channels.py`, `plot.py`)
 - `src/plotix/cli.py` — command-line interface
 - `tests/` — pytest suite; run the whole thing before every commit
 - `configs/` — example batch configs
 - `docs/` — per-format and per-framework documentation
-- `Data/` — example raw data
+- `Data/` — example raw data (`.res` result files and one `.asc` export of the same run)
 
 ## Status
 
-**Stable:** the FPLC reader and chromatogram plot, the source-data export contract, the batch runner, and the CLI.
+**Stable:** the FPLC readers (`.res` and `.asc`) and chromatogram plot, the source-data export contract, the batch runner, and the CLI.
 
 **Experimental:** the theme system currently ships one theme (`publication`); the `Theme` dataclass and `register_theme` are in place for adding more, but the palette may still shift.
 
-**Planned:** additional formats (plate readers, spectra, gels), overlay plots comparing several runs on one axis, and per-format defaults loadable from a config file.
+**Planned:** additional formats (plate readers, spectra, gels), overlay plots comparing several runs on one axis, and per-format defaults loadable from a config file. The `.res` reader covers the channels these runs use; multi-wavelength UV (UV1/UV2/UV3 in one run) is handled in principle but has not been tested against a real file.

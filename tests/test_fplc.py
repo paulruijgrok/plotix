@@ -8,12 +8,9 @@ import pytest
 
 matplotlib.use("Agg")
 
+from plotix.formats.fplc.channels import normalise_run_date  # noqa: E402
 from plotix.formats.fplc.plot import MIN_DISPLAY_SPAN, plot_chromatogram  # noqa: E402
-from plotix.formats.fplc.reader import (  # noqa: E402
-    _normalise_run_date,
-    read_asc,
-    sniff_asc,
-)
+from plotix.formats.fplc.reader import read_asc, sniff_asc  # noqa: E402
 
 # ----------------------------------------------------------------------- reader
 
@@ -112,7 +109,7 @@ def test_sniff_asc():
     ],
 )
 def test_normalise_run_date(raw, expected):
-    assert _normalise_run_date(raw) == expected
+    assert normalise_run_date(raw) == expected
 
 
 # ------------------------------------------------------------------------- plot

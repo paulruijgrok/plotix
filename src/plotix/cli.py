@@ -89,6 +89,29 @@ def _add_fplc_options(parser: argparse.ArgumentParser) -> None:
         help="restrict the x-axis range",
     )
     parser.add_argument("--title", default=None, help="override the figure title")
+    parser.add_argument(
+        "--origin",
+        default="injection",
+        metavar="WHERE",
+        help=(
+            "where volume zero sits, for .res input: 'injection' (default, "
+            "matches UNICORN's ASCII export), 'start' for the instrument's own "
+            "accumulated volume, or a number in ml"
+        ),
+    )
+    parser.add_argument(
+        "--keep-pre-injection",
+        action="store_true",
+        help="keep the equilibration data before the origin instead of trimming it",
+    )
+
+
+def _parse_origin(value: str) -> str | float:
+    """``--origin`` takes either a keyword or a volume in millilitres."""
+    try:
+        return float(value)
+    except ValueError:
+        return value
 
 
 def _fplc_plot_kwargs(args: argparse.Namespace) -> dict:
@@ -96,6 +119,8 @@ def _fplc_plot_kwargs(args: argparse.Namespace) -> dict:
     if isinstance(auxiliary, list) and len(auxiliary) == 1:
         auxiliary = auxiliary[0]
     return {
+        "origin": _parse_origin(args.origin),
+        "trim": not args.keep_pre_injection,
         "theme": args.theme,
         "auxiliary": auxiliary,
         "signal": args.signal,
@@ -117,9 +142,10 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  plotix plot run.asc\n"
+            "  plotix plot run.res\n"
             "  plotix fplc run.asc -o figures --formats png pdf\n"
-            "  plotix fplc run.asc --auxiliary none --max-peaks 3\n"
+            "  plotix fplc run.res --auxiliary none --max-peaks 3\n"
+            "  plotix fplc run.res --origin start --keep-pre-injection\n"
             "  plotix batch batch.yaml\n"
         ),
     )
@@ -206,7 +232,7 @@ def _cmd_batch(args: argparse.Namespace) -> int:
 
     files = discover_inputs(
         roots,
-        patterns=config.get("patterns", ["*.asc"]),
+        patterns=config.get("patterns", ["*.res", "*.asc"]),
         recursive=config.get("recursive", True),
     )
     if not files:

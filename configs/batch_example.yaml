@@ -12,8 +12,11 @@ inputs:
 # Where figures and source-data CSVs are written.
 outdir: figures
 
-# Which files to pick up under each input folder.
+# Which files to pick up under each input folder. Native .res result files
+# and .asc exports are both read; listing both means a folder holding either
+# (or both) just works.
 patterns:
+  - "*.res"
   - "*.asc"
 recursive: true
 
@@ -38,3 +41,5 @@ plot:
   auxiliary: auto      # auto | none | a list of channel names
   max_peaks: 6
   annotate_peaks_: true
+  origin: injection    # .res only: injection | start | a number in ml
+  trim: true           # .res only: drop the equilibration before the origin

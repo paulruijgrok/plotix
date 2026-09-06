@@ -35,7 +35,7 @@ from ...core.plotting import (
     raise_axes,
     style_axes,
 )
-from .reader import read_asc
+from .reader import read_fplc
 
 __all__ = ["plot_chromatogram", "AUXILIARY_CHANNELS", "MIN_SPAN", "MIN_DISPLAY_SPAN"]
 
@@ -154,6 +154,8 @@ def plot_chromatogram(
     caption: str | None = None,
     figsize: tuple[float, float] | None = None,
     stem: str | None = None,
+    origin: str | float = "injection",
+    trim: bool = True,
 ) -> FigureBundle:
     """Plot an FPLC chromatogram and collect its source data.
 
@@ -176,13 +178,22 @@ def plot_chromatogram(
     peak_window:
         ``(xmin, xmax)`` to restrict peak detection, e.g. to skip the void
         volume.
+    origin, trim:
+        Where volume zero sits, and whether to drop what comes before it. Only
+        meaningful for ``.res`` input — an ASCII export is already zeroed at
+        the injection — and ignored when ``source`` is an existing dataset.
+        See :func:`~plotix.formats.fplc.res.read_res`.
 
     Returns
     -------
     FigureBundle
         Figure, tidy source data, and a peak/marks table — call ``.save()``.
     """
-    dataset = source if isinstance(source, Dataset) else read_asc(source)
+    dataset = (
+        source
+        if isinstance(source, Dataset)
+        else read_fplc(source, origin=origin, trim=trim)
+    )
     if not isinstance(dataset, Dataset):  # pragma: no cover - defensive
         raise TypeError("source must be a path or a Dataset")
 

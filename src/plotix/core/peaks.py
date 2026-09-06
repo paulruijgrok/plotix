@@ -44,11 +44,20 @@ class Peak:
         }
 
 
+#: Default minimum spacing between peaks, as a fraction of the curve's x-range.
+#: Without a floor, a high-rate trace splits a single noisy summit into two
+#: detections a few samples apart and the figure labels the same peak twice.
+#: Expressing it as a fraction keeps one default working whether the trace has
+#: a thousand points or a hundred thousand.
+MIN_SEPARATION_FRAC = 0.005
+
+
 def find_peaks(
     curve: Curve,
     min_prominence_frac: float = 0.05,
     max_peaks: int | None = 6,
     min_separation: float | None = None,
+    min_separation_frac: float = MIN_SEPARATION_FRAC,
     xmin: float | None = None,
     xmax: float | None = None,
 ) -> list[Peak]:
@@ -63,7 +72,12 @@ def find_peaks(
     max_peaks:
         Keep only this many, ranked by prominence. ``None`` keeps all.
     min_separation:
-        Minimum spacing between peaks, in x units.
+        Minimum spacing between peaks, in x units. Overrides
+        ``min_separation_frac`` when given.
+    min_separation_frac:
+        Minimum spacing as a fraction of the curve's x-range, used when
+        ``min_separation`` is not set. Set either to 0 to detect every local
+        maximum that clears the prominence threshold.
     xmin, xmax:
         Restrict detection to a window (e.g. skip the void volume).
     """
@@ -79,11 +93,19 @@ def find_peaks(
     if span <= 0:
         return []
 
+    separation = (
+        min_separation
+        if min_separation is not None
+        else min_separation_frac * float(np.ptp(x))
+    )
     distance = None
-    if min_separation is not None and x.size > 1:
-        median_step = float(np.median(np.diff(x)))
-        if median_step > 0:
-            distance = max(1, int(round(min_separation / median_step)))
+    if separation > 0 and x.size > 1:
+        # Average rather than median step: instruments quantise x (an ÄKTA
+        # records volume to 0.01 ml while sampling several times per step), so
+        # consecutive differences are often zero and a median would be too.
+        mean_step = float(np.ptp(x)) / (x.size - 1)
+        if mean_step > 0:
+            distance = max(1, int(round(separation / mean_step)))
 
     indices, props = _scipy_find_peaks(
         y,

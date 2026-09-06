@@ -106,7 +106,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 def discover_inputs(
     roots: Iterable[str | Path],
-    patterns: Sequence[str] = ("*.asc",),
+    patterns: Sequence[str] = ("*.res", "*.asc"),
     recursive: bool = True,
 ) -> list[Path]:
     """Every input file under ``roots`` matching ``patterns``, sorted and unique.
