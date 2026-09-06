@@ -108,7 +108,7 @@ Both sets of thresholds are module-level dicts (`MIN_SPAN`, `MIN_DISPLAY_SPAN` i
 
 ## Output files
 
-For an input `run.res`, `plotix fplc run.res -o figures` writes (identically for `run.asc`):
+For an input `run.res`, `plotix fplc run.res` writes the following into the session folder (identically for `run.asc`) — see [output_layout.md](output_layout.md):
 
 | File | Contents |
 |---|---|
@@ -122,16 +122,18 @@ Source data is long rather than wide on purpose: channels are sampled on differe
 ## Command line
 
 ```bash
-plotix fplc run.res                       # figures/ beside the input
-plotix fplc run.res -o figures            # explicit output directory
-plotix fplc a.res b.res c.asc -o figures  # several files, mixed forms
+plotix fplc run.res                       # today's session folder
+plotix fplc run.res --daily               # today's day folder, overwriting it
+plotix fplc run.res -o exact/place        # exactly there
+plotix fplc a.res b.res c.asc             # several files, mixed forms, one folder
 ```
 
 | Option | Effect |
 |---|---|
 | `--origin WHERE` | `.res` only: where volume zero sits — `injection` (default), `start`, or a number in ml |
 | `--keep-pre-injection` | `.res` only: keep the equilibration data instead of trimming it |
-| `-o, --outdir DIR` | where to write (default: `figures/` beside the input) |
+| `-o, --outdir DIR` | write exactly here, bypassing the session layout |
+| `--output-root DIR`, `--daily`, `--label` | control the session layout ([details](output_layout.md)) |
 | `-f, --formats png pdf svg` | figure formats (default: all three) |
 | `--dpi N` | raster resolution (default: 300) |
 | `--no-source-data` | skip the CSVs |
@@ -163,7 +165,7 @@ bundle = plot_chromatogram(
     peak_window=(8.0, 25.0),          # ignore the void volume
     max_peaks=4,
 )
-bundle.save("figures", formats=("pdf", "png"))
+bundle.save("exact/place", formats=("pdf", "png"))
 ```
 
 `plot_chromatogram` accepts a path or an already-parsed `Dataset`, so you can inspect or filter the data before plotting. The returned `FigureBundle` exposes `.figure` (a normal matplotlib figure, adjust it freely before saving), `.source_data`, `.tables` and `.meta`.

@@ -3,6 +3,7 @@
 from .dataset import Curve, Dataset, Event
 from .export import DEFAULT_FORMATS, FigureBundle, curves_to_long_frame, slugify
 from .io import parse_number, read_text
+from .output import DEFAULT_ROOT, OutputLayout
 from .peaks import Peak, find_peaks, peaks_to_frame
 from .registry import (
     FormatSpec,
@@ -23,6 +24,8 @@ __all__ = [
     "slugify",
     "read_text",
     "parse_number",
+    "OutputLayout",
+    "DEFAULT_ROOT",
     "Peak",
     "find_peaks",
     "peaks_to_frame",

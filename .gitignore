@@ -21,10 +21,8 @@ htmlcov/
 .vscode/
 .idea/
 
-# Plotix outputs
-figures/
+# Plotix outputs — the dated session folders
 output/
-outputs/
 *.log
 
 # Data — the example runs under Data/ are committed on purpose: the quick start

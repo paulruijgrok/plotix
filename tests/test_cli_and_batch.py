@@ -29,10 +29,14 @@ def test_resolve_format_fails_clearly_on_unknown_extension(tmp_path):
         resolve_format(path)
 
 
-def test_plot_file_defaults_to_a_figures_folder_beside_the_input(simple_asc):
-    written = plot_file(simple_asc, formats=("png",))
-    assert all(p.parent.name == "figures" for p in written)
+def test_plot_file_writes_source_data_alongside_the_figure(simple_asc, tmp_path):
+    written = plot_file(simple_asc, tmp_path, formats=("png",))
+    assert all(p.parent == tmp_path for p in written)
     assert any(p.name.endswith("_source_data.csv") for p in written)
+
+
+# The dated session layout that plot_file uses when no outdir is given has its
+# own module: tests/test_output_layout.py.
 
 
 # -------------------------------------------------------------------------- cli
@@ -262,11 +266,9 @@ def test_cli_batch_end_to_end(asc_factory, tmp_path):
     assert (tmp_path / "out" / "two.png").exists()
 
 
-def test_cli_batch_requires_inputs_and_outdir(tmp_path, capsys):
+def test_cli_batch_requires_inputs(tmp_path, capsys):
     assert main(["batch"]) == 2
     assert "needs inputs" in capsys.readouterr().err
-    assert main(["batch", "--inputs", str(tmp_path)]) == 2
-    assert "output directory" in capsys.readouterr().err
 
 
 def test_cli_batch_reports_when_nothing_matches(tmp_path, capsys):

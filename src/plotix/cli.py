@@ -1,9 +1,13 @@
 """Command-line interface.
 
-    plotix plot RUN.asc                 # figure + source data next to the file
-    plotix fplc RUN.asc -o figures      # same, format pinned explicitly
+    plotix plot RUN.res                 # figure + source data in today's session folder
+    plotix fplc RUN.res --daily         # same, but overwrite today's folder
+    plotix fplc RUN.res -o somewhere    # write exactly there instead
     plotix batch batch.yaml             # unattended run over many files
     plotix formats                      # what plotix can read
+
+Output goes to output/<YYYYMMDD>_<FORMAT>/<YYYYMMDD_HHMMSS>/ unless -o says
+otherwise; see :mod:`plotix.core.output`.
 
 Every format registered in :mod:`plotix.core.registry` gets its own subcommand
 automatically, so a new instrument needs no changes here.
@@ -19,6 +23,7 @@ from pathlib import Path
 from . import __version__
 from .core.batch import discover_inputs, load_config, run_batch
 from .core.export import DEFAULT_FORMATS
+from .core.output import DEFAULT_ROOT, OutputLayout
 from .core.registry import list_formats
 from .core.theme import THEMES
 
@@ -31,7 +36,30 @@ def _add_output_options(parser: argparse.ArgumentParser) -> None:
         "--outdir",
         type=Path,
         default=None,
-        help="output directory (default: a 'figures/' folder beside the input)",
+        help=(
+            "write exactly here, bypassing the dated session layout "
+            "(default: output/<YYYYMMDD>_<FORMAT>/<YYYYMMDD_HHMMSS>/)"
+        ),
+    )
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=DEFAULT_ROOT,
+        metavar="DIR",
+        help=f"root of the session layout (default: {DEFAULT_ROOT}/)",
+    )
+    parser.add_argument(
+        "--daily",
+        action="store_true",
+        help=(
+            "write straight into the day folder, overwriting it, instead of "
+            "a new timestamped folder per run"
+        ),
+    )
+    parser.add_argument(
+        "--label",
+        default=None,
+        help="tag appended to the run folder name, e.g. --label pfldh",
     )
     parser.add_argument(
         "-f",
@@ -143,7 +171,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "examples:\n"
             "  plotix plot run.res\n"
-            "  plotix fplc run.asc -o figures --formats png pdf\n"
+            "  plotix fplc run.res --daily\n"
+            "  plotix fplc run.asc -o exact/place --formats png pdf\n"
             "  plotix fplc run.res --auxiliary none --max-peaks 3\n"
             "  plotix fplc run.res --origin start --keep-pre-injection\n"
             "  plotix batch batch.yaml\n"
@@ -170,7 +199,19 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument(
         "--inputs", nargs="+", type=Path, default=None, help="input files or folders"
     )
-    batch.add_argument("-o", "--outdir", type=Path, default=None, help="output directory")
+    batch.add_argument(
+        "-o", "--outdir", type=Path, default=None,
+        help="write exactly here, bypassing the dated session layout",
+    )
+    batch.add_argument(
+        "--output-root", type=Path, default=DEFAULT_ROOT, metavar="DIR",
+        help=f"root of the session layout (default: {DEFAULT_ROOT}/)",
+    )
+    batch.add_argument(
+        "--daily", action="store_true",
+        help="write straight into the day folder, overwriting it",
+    )
+    batch.add_argument("--label", default=None, help="tag appended to the run folder name")
     batch.add_argument("--format", default=None, help="force a format for every input")
     batch.add_argument("--formats", nargs="+", default=None, metavar="EXT")
     batch.add_argument("--dpi", type=int, default=None)
@@ -186,10 +227,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _layout_from(args: argparse.Namespace) -> OutputLayout:
+    """One layout per invocation, so every file plotted shares a folder."""
+    return OutputLayout(
+        root=args.output_root,
+        mode="daily" if args.daily else "run",
+        label=args.label,
+    )
+
+
 def _cmd_plot(args: argparse.Namespace, format_name: str | None) -> int:
     from .api import plot as plot_source
+    from .api import resolve_format
 
     plot_kwargs = _fplc_plot_kwargs(args) if hasattr(args, "signal") else {"theme": args.theme}
+    layout = _layout_from(args)
     failures = 0
 
     for path in args.inputs:
@@ -197,9 +249,15 @@ def _cmd_plot(args: argparse.Namespace, format_name: str | None) -> int:
             print(f"error: no such file: {path}", file=sys.stderr)
             failures += 1
             continue
-        outdir = args.outdir if args.outdir is not None else path.parent / "figures"
         try:
-            bundle = plot_source(path, format=format_name, **plot_kwargs)
+            spec = resolve_format(path, format_name)
+        except ValueError as exc:
+            print(f"error: {path.name}: {exc}", file=sys.stderr)
+            failures += 1
+            continue
+        outdir = args.outdir if args.outdir is not None else layout.directory(spec.name)
+        try:
+            bundle = plot_source(path, format=spec.name, **plot_kwargs)
             written = bundle.save(
                 outdir,
                 formats=args.formats,
@@ -226,9 +284,6 @@ def _cmd_batch(args: argparse.Namespace) -> int:
         print("error: batch needs inputs, from --inputs or the config", file=sys.stderr)
         return 2
     outdir = args.outdir or config.get("outdir")
-    if not outdir:
-        print("error: batch needs an output directory, from -o or the config", file=sys.stderr)
-        return 2
 
     files = discover_inputs(
         roots,
@@ -242,6 +297,13 @@ def _cmd_batch(args: argparse.Namespace) -> int:
     report = run_batch(
         files,
         outdir,
+        layout=OutputLayout(
+            root=args.output_root if args.output_root != DEFAULT_ROOT else config.get(
+                "output_root", DEFAULT_ROOT
+            ),
+            mode="daily" if (args.daily or config.get("daily", False)) else "run",
+            label=args.label or config.get("label"),
+        ),
         format=args.format or config.get("format"),
         formats=args.formats or config.get("formats", list(DEFAULT_FORMATS)),
         dpi=args.dpi or config.get("dpi", 300),

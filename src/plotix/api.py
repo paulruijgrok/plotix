@@ -2,8 +2,8 @@
 
 These are the two functions most day-to-day use goes through::
 
-    ds = plotix.read("run.asc")             # -> Dataset
-    plotix.plot_file("run.asc", "figures")  # -> figure + source-data CSVs
+    ds = plotix.read("run.res")             # -> Dataset
+    plotix.plot_file("run.res")             # -> figure + source-data CSVs
 
 Both dispatch on the format registry, so they gain support for new instruments
 automatically as formats are added.
@@ -17,9 +17,10 @@ from typing import Any
 
 from .core.dataset import Dataset
 from .core.export import DEFAULT_FORMATS, FigureBundle
+from .core.output import OutputLayout
 from .core.registry import FormatSpec, detect_format, get_format
 
-__all__ = ["resolve_format", "read", "plot", "plot_file"]
+__all__ = ["resolve_format", "read", "plot", "plot_file", "OutputLayout"]
 
 
 def resolve_format(
@@ -66,18 +67,27 @@ def plot_file(
     dpi: int = 300,
     write_source_data: bool = True,
     close: bool = True,
+    layout: OutputLayout | None = None,
     **plot_kwargs: Any,
 ) -> list[Path]:
     """Read a file, plot it, and write the figure plus its source data.
 
-    ``outdir`` defaults to a ``figures/`` directory beside the input file, so
-    the common case is a single argument.
+    With no ``outdir`` the files go to a dated session folder under
+    ``output/`` — see :class:`~plotix.core.output.OutputLayout`. Pass
+    ``outdir`` to write somewhere exact instead, or ``layout`` to change how
+    the session folder is built (for example ``OutputLayout(mode="daily")``).
+
+    Plotting several files into one session folder means building the layout
+    once and passing it to each call; a fresh default layout per call would
+    take a new timestamp each time.
     """
     path = Path(path)
-    outdir = Path(outdir) if outdir is not None else path.parent / "figures"
-    bundle = plot(path, format=format, **plot_kwargs)
+    spec = resolve_format(path, format)
+    if outdir is None:
+        outdir = (layout or OutputLayout()).directory(spec.name)
+    bundle = plot(path, format=spec.name, **plot_kwargs)
     return bundle.save(
-        outdir,
+        Path(outdir),
         formats=formats,
         dpi=dpi,
         write_source_data=write_source_data,

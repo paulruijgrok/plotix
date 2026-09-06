@@ -9,8 +9,13 @@
 inputs:
   - Data/FPLC
 
-# Where figures and source-data CSVs are written.
-outdir: figures
+# Where output goes. Leave `outdir` unset to use the dated session layout —
+# output/<YYYYMMDD>_<FORMAT>/<YYYYMMDD_HHMMSS>/ — or set it to write exactly
+# somewhere. `daily: true` drops the per-run folder and overwrites the day's.
+output_root: output
+daily: false
+# label: overnight
+# outdir: some/exact/place
 
 # Which files to pick up under each input folder. Native .res result files
 # and .asc exports are both read; listing both means a folder holding either
@@ -33,7 +38,7 @@ force: false
 # true gives each input its own subfolder under outdir.
 per_file_subdir: false
 
-log: figures/batch.log
+log: output/batch.log
 
 # Passed straight to the format's plot function — anything the Python API
 # accepts can be set here.

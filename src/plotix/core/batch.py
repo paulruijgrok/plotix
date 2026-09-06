@@ -5,8 +5,12 @@ overnight. The rules that matter:
 
 * **Fail-isolated** — one unreadable file logs a traceback and the batch
   continues. A single corrupt export never costs you the other 200 figures.
-* **Resumable** — a file whose outputs already exist is skipped unless
-  ``force`` is set, so an interrupted batch can simply be re-run.
+* **Resumable** — a file whose outputs already exist at its destination is
+  skipped unless ``force`` is set, so an interrupted batch can simply be
+  re-run. Note that the default session layout gives every invocation its own
+  timestamped folder, which means nothing is ever already present there; pin
+  the destination (``outdir``, or ``OutputLayout(mode="daily")``) when resume
+  is what you want.
 * **Logged** — every run writes to a batch log file, and the batch ends with a
   summary of what succeeded, what was skipped, and what failed and why.
 * **Non-interactive** — nothing ever prompts. Missing parameters fail that
@@ -24,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from .export import DEFAULT_FORMATS
+from .output import OutputLayout
 
 __all__ = ["BatchResult", "BatchReport", "discover_inputs", "run_batch", "load_config"]
 
@@ -48,6 +53,8 @@ class BatchReport:
     results: list[BatchResult] = field(default_factory=list)
     started: float = field(default_factory=time.time)
     finished: float | None = None
+    #: Directories written to, in the order first used.
+    destinations: list[Path] = field(default_factory=list)
 
     def of(self, status: str) -> list[BatchResult]:
         return [r for r in self.results if r.status == status]
@@ -76,6 +83,10 @@ class BatchReport:
             f"  failed    : {len(self.failed)}",
             f"  elapsed   : {elapsed:.1f} s",
         ]
+        if self.destinations:
+            lines.append("")
+            lines.append("Output:")
+            lines.extend(f"  {d}" for d in self.destinations)
         if self.failed:
             lines.append("")
             lines.append("Failures:")
@@ -152,8 +163,9 @@ def _expected_outputs(outdir: Path, stem: str, formats: Sequence[str]) -> list[P
 
 def run_batch(
     inputs: Sequence[str | Path],
-    outdir: str | Path,
+    outdir: str | Path | None = None,
     *,
+    layout: OutputLayout | None = None,
     format: str | None = None,
     formats: Sequence[str] = DEFAULT_FORMATS,
     dpi: int = 300,
@@ -170,32 +182,71 @@ def run_batch(
     inputs:
         Files to plot (use :func:`discover_inputs` to expand folders).
     outdir:
-        Where figures and source data go.
+        Write everything here. Leave unset to use the dated session layout,
+        which puts each format's output in its own day folder — so a batch
+        spanning two instruments sorts itself out.
+    layout:
+        The session layout to use when ``outdir`` is unset. One layout is built
+        for the whole batch, so every file lands in the same run folder even if
+        the batch runs past midnight.
     force:
         Re-plot inputs whose outputs already exist.
     per_file_subdir:
-        Give each input its own subdirectory under ``outdir``.
+        Give each input its own subdirectory under the destination.
     plot_kwargs:
         Passed through to the format's plot function.
+
+    Notes
+    -----
+    Resume works by checking whether a file's outputs already exist *at the
+    destination it would be written to*. In the default per-run layout every
+    invocation gets a fresh timestamped folder, so nothing is ever skipped and
+    an interrupted batch replots from the start. To resume unattended work, pin
+    the destination with ``outdir`` or with ``OutputLayout(mode="daily")``.
     """
     # Imported here to keep module import cheap and avoid a cycle with api.
     from ..api import plot as plot_source
+    from ..api import resolve_format
     from ..core.export import slugify
 
-    outdir = Path(outdir)
-    outdir.mkdir(parents=True, exist_ok=True)
     handler = _configure_logging(Path(log_path) if log_path else None, verbose)
     report = BatchReport()
     plot_kwargs = dict(plot_kwargs or {})
+    fixed_outdir = Path(outdir) if outdir is not None else None
+    layout = layout or OutputLayout()
 
-    logger.info("batch start: %d input(s) -> %s", len(inputs), outdir)
+    logger.info(
+        "batch start: %d input(s) -> %s",
+        len(inputs),
+        fixed_outdir if fixed_outdir is not None else f"{layout.root}/<day>/<run>",
+    )
 
     try:
         for n, raw_path in enumerate(inputs, start=1):
             path = Path(raw_path)
             started = time.time()
-            target = outdir / slugify(path.stem) if per_file_subdir else outdir
             stem = slugify(path.stem)
+
+            if fixed_outdir is not None:
+                destination = fixed_outdir
+            else:
+                try:
+                    destination = layout.directory(resolve_format(path, format).name)
+                except (ValueError, KeyError) as exc:
+                    logger.error("FAILED %s: %s", path.name, exc)
+                    report.results.append(
+                        BatchResult(
+                            path=path,
+                            status="failed",
+                            error=f"{type(exc).__name__}: {exc}",
+                            seconds=time.time() - started,
+                        )
+                    )
+                    continue
+
+            target = destination / stem if per_file_subdir else destination
+            if destination not in report.destinations:
+                report.destinations.append(destination)
 
             if not force and all(p.exists() for p in _expected_outputs(target, stem, formats)):
                 logger.info("[%d/%d] skip (already done): %s", n, len(inputs), path.name)

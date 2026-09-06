@@ -12,22 +12,32 @@ cd plotix
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-plotix fplc "Data/FPLC/20260902_PfDh_Nb02P/20260902 Nb02P 60 ul plus PfLDH 100 ul incub 20min001.res" -o figures
+plotix fplc "Data/FPLC/20260902_PfDh_Nb02P/20260902 Nb02P 60 ul plus PfLDH 100 ul incub 20min001.res"
 ```
 
-Expected output: `figures/` gains a `.png`, `.pdf` and `.svg` of the chromatogram — UV trace, labelled peak volumes, fraction band — alongside `..._source_data.csv` (every plotted point), `..._peaks.csv` (peak volumes, heights, widths, areas) and `..._marks.csv` (fraction and injection positions).
+Expected output — a dated session folder holding a `.png`, `.pdf` and `.svg` of the chromatogram (UV trace, labelled peak volumes, fraction band), alongside `..._source_data.csv` (every plotted point), `..._peaks.csv` (peak volumes, heights, widths, areas) and `..._marks.csv` (fraction and injection positions):
+
+```
+output/
+  20260905_FPLC/
+    20260905_143022/
+      20260902 Nb02P ... .png .pdf .svg
+      20260902 Nb02P ..._source_data.csv
+      20260902 Nb02P ..._peaks.csv
+      20260902 Nb02P ..._marks.csv
+```
 
 From Python:
 
 ```python
 import plotix
 
-plotix.plot_file("run.res", "figures")           # figure + source data, one call
+plotix.plot_file("run.res")                      # figure + source data, one call
 
 bundle = plotix.plot("run.res", auxiliary="Conductivity")
 bundle.source_data.head()                        # the numbers behind the figure
 bundle.figure.axes[0].set_xlim(5, 25)            # tweak, then save
-bundle.save("figures", formats=("pdf",))
+bundle.save("somewhere", formats=("pdf",))
 ```
 
 ## Installation
@@ -44,7 +54,7 @@ All dependencies are pure pip installs; there are no compiled or external tools.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"     # drop [dev] if you don't need pytest/ruff
-pytest                      # 117 tests, ~5 s
+pytest                      # 144 tests, ~7 s
 ```
 
 ### Known gotchas
@@ -61,11 +71,31 @@ pytest                      # 117 tests, ~5 s
 Reads ÄKTA / UNICORN runs — either the instrument's native `.res` result file or the `.asc` ASCII export — and produces a chromatogram: UV absorbance against elution volume as the visual subject, auxiliary channels (conductivity, %B, pressure, pH) on colour-matched offset axes, collected fractions as a band along the bottom, and peak volumes labelled on the trace. Auxiliary channels that never move are dropped automatically, so an isocratic SEC run gives a clean UV-only figure without being asked. [Full details](docs/fplc.md)
 
 ```bash
-plotix fplc run.res -o figures
+plotix fplc run.res
 plotix fplc run.res --auxiliary Conductivity "Concentration B" --max-peaks 3
 ```
 
 Both file forms produce the same dataset and the same figure, so nothing downstream needs to know which one you used. Reading `.res` directly skips the export step, and gives roughly 15x more UV samples, since the ASCII export is decimated. The `.res` reader is checked against the ASCII export of the same run as part of the test suite; they agree to 0.014 mAU rms on a 8.9 mAU peak, with identical fraction marks and metadata.
+
+## Where output goes
+
+Figures land in a dated session folder, so a re-run with different settings never overwrites the figure you were about to use:
+
+```
+output/<YYYYMMDD>_<FORMAT>/<YYYYMMDD_HHMMSS>/
+```
+
+The day folder is dated when plotix runs (not when the data was acquired), and named after the kind of data — so two instruments on the same day get `20260905_FPLC` and `20260905_PLATE` side by side. Every file in one invocation shares one run folder, including a whole batch.
+
+```bash
+plotix fplc run.res                       # output/20260905_FPLC/20260905_143022/
+plotix fplc run.res --label pfldh         # ..._pfldh, to say what the run was
+plotix fplc run.res --daily               # output/20260905_FPLC/, overwriting it
+plotix fplc run.res --output-root ~/plots # somewhere else entirely
+plotix fplc run.res -o exact/place        # bypass the layout completely
+```
+
+`--daily` is the mode for once settings have settled and the accumulating timestamped folders are just clutter. [Full details](docs/output_layout.md)
 
 ## Batch processing
 
@@ -73,7 +103,7 @@ Any format can be run unattended across a folder of datasets. The batch runner i
 
 ```bash
 plotix batch configs/batch_example.yaml
-plotix batch --inputs Data/FPLC -o figures --log figures/batch.log
+plotix batch --inputs Data/FPLC --log output/batch.log
 ```
 
 ## Adding a format
@@ -82,7 +112,7 @@ New instruments plug into the same machinery. In short: write `reader.py` that r
 
 ## Repo map
 
-- `src/plotix/core/` — shared machinery: containers (`dataset`), theming (`theme`), plot primitives (`plotting`), figure and CSV export (`export`), peak detection (`peaks`), file decoding (`io`), format registry (`registry`), batch runner (`batch`)
+- `src/plotix/core/` — shared machinery: containers (`dataset`), theming (`theme`), plot primitives (`plotting`), figure and CSV export (`export`), output layout (`output`), peak detection (`peaks`), file decoding (`io`), format registry (`registry`), batch runner (`batch`)
 - `src/plotix/formats/` — one subpackage per instrument format (`fplc/` so far: `res.py` and `asc.py` readers, shared `channels.py`, `plot.py`)
 - `src/plotix/cli.py` — command-line interface
 - `tests/` — pytest suite; run the whole thing before every commit
@@ -92,7 +122,7 @@ New instruments plug into the same machinery. In short: write `reader.py` that r
 
 ## Status
 
-**Stable:** the FPLC readers (`.res` and `.asc`) and chromatogram plot, the source-data export contract, the batch runner, and the CLI.
+**Stable:** the FPLC readers (`.res` and `.asc`) and chromatogram plot, the source-data export contract, the output layout, the batch runner, and the CLI.
 
 **Experimental:** the theme system currently ships one theme (`publication`); the `Theme` dataclass and `register_theme` are in place for adding more, but the palette may still shift.
 
