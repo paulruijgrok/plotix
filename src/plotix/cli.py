@@ -1,5 +1,6 @@
 """Command-line interface.
 
+    plotix fplc FOLDER                  # plot everything in a folder
     plotix plot RUN.res                 # figure + source data in today's session folder
     plotix fplc RUN.res --daily         # same, but overwrite today's folder
     plotix fplc RUN.res -o somewhere    # write exactly there instead
@@ -21,13 +22,41 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
-from .core.batch import discover_inputs, load_config, run_batch
+from .core.batch import (
+    InputFile,
+    discover_tree,
+    load_config,
+    resolve_stems,
+    run_batch,
+)
 from .core.export import DEFAULT_FORMATS
 from .core.output import DEFAULT_ROOT, OutputLayout
-from .core.registry import list_formats
+from .core.registry import get_format, list_formats
 from .core.theme import THEMES
 
 __all__ = ["main", "build_parser"]
+
+
+def _add_input_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "inputs",
+        nargs="+",
+        type=Path,
+        help="data files, or folders to plot everything in",
+    )
+    parser.add_argument(
+        "--no-recursive",
+        action="store_true",
+        help="when given a folder, do not descend into its subfolders",
+    )
+    parser.add_argument(
+        "--flat",
+        action="store_true",
+        help=(
+            "put every figure in one folder instead of mirroring the source "
+            "subfolders"
+        ),
+    )
 
 
 def _add_output_options(parser: argparse.ArgumentParser) -> None:
@@ -170,6 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
+            "  plotix fplc ~/data/20260905_runs      # a whole folder\n"
             "  plotix plot run.res\n"
             "  plotix fplc run.res --daily\n"
             "  plotix fplc run.asc -o exact/place --formats png pdf\n"
@@ -181,23 +211,37 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"plotix {__version__}")
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
-    generic = sub.add_parser("plot", help="plot one or more files, detecting the format")
-    generic.add_argument("inputs", nargs="+", type=Path, help="data files to plot")
+    generic = sub.add_parser(
+        "plot", help="plot files or whole folders, detecting the format"
+    )
+    _add_input_options(generic)
     generic.add_argument("--format", default=None, help="force a format instead of detecting it")
     _add_output_options(generic)
     _add_fplc_options(generic)
 
     for spec in list_formats():
         fmt_parser = sub.add_parser(spec.name, help=spec.description)
-        fmt_parser.add_argument("inputs", nargs="+", type=Path, help="data files to plot")
+        _add_input_options(fmt_parser)
         _add_output_options(fmt_parser)
         if spec.name == "fplc":
             _add_fplc_options(fmt_parser)
 
     batch = sub.add_parser("batch", help="plot many files unattended, with resume and logging")
-    batch.add_argument("config", type=Path, nargs="?", default=None, help="YAML/JSON batch config")
+    batch.add_argument(
+        "source",
+        type=Path,
+        nargs="?",
+        default=None,
+        help="a folder to plot everything in, or a YAML/JSON batch config",
+    )
     batch.add_argument(
         "--inputs", nargs="+", type=Path, default=None, help="input files or folders"
+    )
+    batch.add_argument(
+        "--no-recursive", action="store_true", help="do not descend into subfolders"
+    )
+    batch.add_argument(
+        "--flat", action="store_true", help="do not mirror the source subfolders"
     )
     batch.add_argument(
         "-o", "--outdir", type=Path, default=None,
@@ -236,19 +280,54 @@ def _layout_from(args: argparse.Namespace) -> OutputLayout:
     )
 
 
+def _patterns_for(format_name: str | None) -> list[str]:
+    """Filename patterns to look for when an argument is a folder."""
+    specs = [get_format(format_name)] if format_name else list_formats()
+    return sorted({f"*{ext}" for spec in specs for ext in spec.extensions})
+
+
+def _expand(
+    inputs: Sequence[Path], format_name: str | None, recursive: bool = True
+) -> tuple[list[InputFile], list[Path]]:
+    """Turn the command's arguments into files to plot.
+
+    A folder argument expands to everything plotable inside it, tagged with the
+    subfolder it came from so the output can mirror the source tree. Files
+    named directly are taken as given. Returns the files and any arguments that
+    do not exist, so the caller can report them.
+    """
+    missing = [p for p in inputs if not p.exists()]
+    present = [p for p in inputs if p.exists()]
+    if not present:
+        return [], missing
+    return discover_tree(present, _patterns_for(format_name), recursive), missing
+
+
 def _cmd_plot(args: argparse.Namespace, format_name: str | None) -> int:
     from .api import plot as plot_source
     from .api import resolve_format
 
     plot_kwargs = _fplc_plot_kwargs(args) if hasattr(args, "signal") else {"theme": args.theme}
     layout = _layout_from(args)
-    failures = 0
 
-    for path in args.inputs:
-        if not path.exists():
-            print(f"error: no such file: {path}", file=sys.stderr)
-            failures += 1
-            continue
+    items, missing = _expand(args.inputs, format_name, recursive=not args.no_recursive)
+    failures = len(missing)
+    for path in missing:
+        print(f"error: no such file or folder: {path}", file=sys.stderr)
+    if not items:
+        if not missing:
+            print("error: nothing to plot in the given input", file=sys.stderr)
+        return 1
+
+    # A single named file gets the full listing; a folder of runs gets one line
+    # each and a count, which is what stays readable at forty files.
+    detailed = len(items) == 1
+    mirror = not args.flat
+    stems = resolve_stems(items, mirror)
+    plotted = 0
+
+    for item in items:
+        path = item.path
         try:
             spec = resolve_format(path, format_name)
         except ValueError as exc:
@@ -256,8 +335,11 @@ def _cmd_plot(args: argparse.Namespace, format_name: str | None) -> int:
             failures += 1
             continue
         outdir = args.outdir if args.outdir is not None else layout.directory(spec.name)
+        if mirror and item.mirrored:
+            outdir = outdir / item.subdir
         try:
             bundle = plot_source(path, format=spec.name, **plot_kwargs)
+            bundle.stem = stems[path]
             written = bundle.save(
                 outdir,
                 formats=args.formats,
@@ -269,34 +351,54 @@ def _cmd_plot(args: argparse.Namespace, format_name: str | None) -> int:
             print(f"error: {path.name}: {type(exc).__name__}: {exc}", file=sys.stderr)
             failures += 1
             continue
+        plotted += 1
         print(f"{path.name} -> {outdir}")
-        for out in written:
-            print(f"  {out.name}")
+        if detailed:
+            for out in written:
+                print(f"  {out.name}")
+
+    if not detailed:
+        summary = f"\n{plotted} plotted"
+        if failures:
+            summary += f", {failures} failed"
+        print(summary)
 
     return 1 if failures else 0
 
 
 def _cmd_batch(args: argparse.Namespace) -> int:
-    config: dict = load_config(args.config) if args.config else {}
+    # The positional is whichever is more convenient: a folder to plot, or a
+    # config describing a whole run.
+    config: dict = {}
+    extra_roots: list[Path] = []
+    if args.source is not None:
+        if args.source.is_dir():
+            extra_roots.append(args.source)
+        else:
+            config = load_config(args.source)
 
-    roots = args.inputs or config.get("inputs")
+    roots = list(args.inputs or []) + extra_roots or config.get("inputs")
     if not roots:
-        print("error: batch needs inputs, from --inputs or the config", file=sys.stderr)
+        print(
+            "error: batch needs inputs — give it a folder, --inputs, or a config",
+            file=sys.stderr,
+        )
         return 2
     outdir = args.outdir or config.get("outdir")
 
-    files = discover_inputs(
+    items = discover_tree(
         roots,
         patterns=config.get("patterns", ["*.res", "*.asc"]),
-        recursive=config.get("recursive", True),
+        recursive=config.get("recursive", not args.no_recursive),
     )
-    if not files:
+    if not items:
         print("error: no input files matched", file=sys.stderr)
         return 1
 
     report = run_batch(
-        files,
+        items,
         outdir,
+        mirror=not (args.flat or config.get("flat", False)),
         layout=OutputLayout(
             root=args.output_root if args.output_root != DEFAULT_ROOT else config.get(
                 "output_root", DEFAULT_ROOT

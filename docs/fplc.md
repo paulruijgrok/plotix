@@ -122,6 +122,7 @@ Source data is long rather than wide on purpose: channels are sampled on differe
 ## Command line
 
 ```bash
+plotix fplc ~/data/todays_runs            # a whole folder, mirroring its structure
 plotix fplc run.res                       # today's session folder
 plotix fplc run.res --daily               # today's day folder, overwriting it
 plotix fplc run.res -o exact/place        # exactly there
@@ -134,6 +135,7 @@ plotix fplc a.res b.res c.asc             # several files, mixed forms, one fold
 | `--keep-pre-injection` | `.res` only: keep the equilibration data instead of trimming it |
 | `-o, --outdir DIR` | write exactly here, bypassing the session layout |
 | `--output-root DIR`, `--daily`, `--label` | control the session layout ([details](output_layout.md)) |
+| `--flat`, `--no-recursive` | how a folder argument is expanded and laid out |
 | `-f, --formats png pdf svg` | figure formats (default: all three) |
 | `--dpi N` | raster resolution (default: 300) |
 | `--no-source-data` | skip the CSVs |

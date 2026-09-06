@@ -25,6 +25,10 @@ patterns:
   - "*.asc"
 recursive: true
 
+# false (default) mirrors each file's source subfolder in the output, so two
+# experiment folders holding a run of the same name stay apart.
+flat: false
+
 formats:
   - png
   - pdf

@@ -32,6 +32,19 @@ Three properties, in the order they matter:
 
 **One invocation, one folder.** The timestamp is taken once when the command starts, so plotting forty files — or running a whole batch — puts them all together. This holds even if the batch runs past midnight.
 
+**Source subfolders are mirrored.** Point plotix at a folder and each run's figures land in a subfolder matching where the raw file sat:
+
+```
+~/data/todays_runs/            output/20260905_FPLC/20260905_143022/
+  expA/run1.res         ->       expA/run1.png  expA/run1_peaks.csv ...
+  expB/run1.res         ->       expB/run1.png ...
+  expB/deeper/run2.res  ->       expB/deeper/run2.png ...
+```
+
+This is not tidiness for its own sake: two experiment folders routinely hold a run called the same thing, and without the mirroring the second would overwrite the first — or be skipped as "already done" by the resume check, so the batch would report success with a run's figures quietly missing.
+
+`--flat` collapses it all into one folder. Stems that would then collide get their source folder prefixed (`expA_run1.png`, `expB_run1.png`), so flattening still never loses a run. Files you name individually are never mirrored, since they have no source folder to mirror.
+
 ## Modes
 
 ```bash
@@ -40,6 +53,9 @@ plotix fplc run.res --label pfldh         # ..._143022_pfldh/
 plotix fplc run.res --daily               # output/20260905_FPLC/ — overwrites
 plotix fplc run.res --output-root ~/plots # ~/plots/20260905_FPLC/...
 plotix fplc run.res -o exact/place        # exactly there; no layout at all
+plotix fplc ~/data/runs                   # a whole folder, mirrored
+plotix fplc ~/data/runs --flat            # ...all in one folder
+plotix fplc ~/data/runs --no-recursive    # top level only
 ```
 
 `--daily` drops the per-run folder and writes straight into the day folder, overwriting what is already there. It is the right mode once settings have settled and the accumulating timestamped folders are just clutter — and it is also what makes batch resume work (see below).

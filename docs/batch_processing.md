@@ -12,6 +12,9 @@ Plot a folder of runs unattended. Designed for the case where the batch is left 
 ## Command line
 
 ```bash
+# Just a folder — plots everything in it
+plotix batch ~/data/todays_runs
+
 # From a config file
 plotix batch configs/batch_example.yaml
 
@@ -22,11 +25,14 @@ plotix batch --inputs Data/FPLC --formats png pdf --log output/batch.log
 plotix batch --inputs Data/FPLC --daily
 ```
 
-Output goes to the dated session layout unless `-o` says otherwise, and a batch spanning two instruments splits itself into one day folder each. See [output_layout.md](output_layout.md).
+Output goes to the dated session layout unless `-o` says otherwise, mirroring the source subfolder structure, and a batch spanning two instruments splits itself into one day folder each. See [output_layout.md](output_layout.md).
 
 | Option | Effect |
 |---|---|
+| `source` | a folder to plot everything in, or a YAML/JSON config (positional) |
 | `--inputs PATH...` | files or folders to plot (folders are searched recursively) |
+| `--no-recursive` | do not descend into subfolders |
+| `--flat` | do not mirror the source subfolders in the output |
 | `-o, --outdir DIR` | write exactly here, bypassing the session layout |
 | `--output-root DIR` | root of the session layout (default `output/`) |
 | `--daily` | write into the day folder, overwriting it — and enabling resume |
@@ -54,6 +60,7 @@ inputs:
 
 output_root: output      # root of the dated session layout
 daily: false             # true overwrites the day folder, and enables resume
+flat: false              # true puts everything in one folder, unmirrored
 # label: overnight       # tag on the run folder
 # outdir: some/place     # set to bypass the layout entirely
 
@@ -94,10 +101,12 @@ plotix batch configs/sec_runs.yaml
 ## Python API
 
 ```python
-from plotix.core.batch import discover_inputs, run_batch
+from plotix.core.batch import discover_tree, run_batch
 from plotix.core.output import OutputLayout
 
-files = discover_inputs(["Data/FPLC"], patterns=["*.res", "*.asc"])
+# discover_tree tags each file with its source subfolder, which is what lets
+# the output mirror the input; discover_inputs returns bare paths instead.
+files = discover_tree(["Data/FPLC"], patterns=["*.res", "*.asc"])
 report = run_batch(
     files,
     formats=("png", "pdf"),

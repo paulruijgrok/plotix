@@ -12,8 +12,10 @@ cd plotix
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-plotix fplc "Data/FPLC/20260902_PfDh_Nb02P/20260902 Nb02P 60 ul plus PfLDH 100 ul incub 20min001.res"
+plotix fplc Data/FPLC          # a whole folder: everything plotable in it
 ```
+
+Or one file: `plotix fplc "Data/FPLC/20260902_PfDh_Nb02P/20260902 Nb02P 60 ul plus PfLDH 100 ul incub 20min001.res"`
 
 Expected output — a dated session folder holding a `.png`, `.pdf` and `.svg` of the chromatogram (UV trace, labelled peak volumes, fraction band), alongside `..._source_data.csv` (every plotted point), `..._peaks.csv` (peak volumes, heights, widths, areas) and `..._marks.csv` (fraction and injection positions):
 
@@ -54,7 +56,7 @@ All dependencies are pure pip installs; there are no compiled or external tools.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"     # drop [dev] if you don't need pytest/ruff
-pytest                      # 144 tests, ~7 s
+pytest                      # 170 tests, ~11 s
 ```
 
 ### Known gotchas
@@ -71,6 +73,7 @@ pytest                      # 144 tests, ~7 s
 Reads ÄKTA / UNICORN runs — either the instrument's native `.res` result file or the `.asc` ASCII export — and produces a chromatogram: UV absorbance against elution volume as the visual subject, auxiliary channels (conductivity, %B, pressure, pH) on colour-matched offset axes, collected fractions as a band along the bottom, and peak volumes labelled on the trace. Auxiliary channels that never move are dropped automatically, so an isocratic SEC run gives a clean UV-only figure without being asked. [Full details](docs/fplc.md)
 
 ```bash
+plotix fplc ~/data/todays_runs     # a folder — no need to name each file
 plotix fplc run.res
 plotix fplc run.res --auxiliary Conductivity "Concentration B" --max-peaks 3
 ```
@@ -87,6 +90,16 @@ output/<YYYYMMDD>_<FORMAT>/<YYYYMMDD_HHMMSS>/
 
 The day folder is dated when plotix runs (not when the data was acquired), and named after the kind of data — so two instruments on the same day get `20260905_FPLC` and `20260905_PLATE` side by side. Every file in one invocation shares one run folder, including a whole batch.
 
+Point plotix at a folder and the output mirrors its structure, so runs from different experiment folders stay apart:
+
+```
+~/data/todays_runs/          output/20260905_FPLC/20260905_143022/
+  expA/run1.res       ->       expA/run1.png ...
+  expB/run1.res       ->       expB/run1.png ...
+```
+
+`--flat` puts everything in one folder instead; names that would then collide get their source folder prefixed, so no run is ever silently overwritten.
+
 ```bash
 plotix fplc run.res                       # output/20260905_FPLC/20260905_143022/
 plotix fplc run.res --label pfldh         # ..._pfldh, to say what the run was
@@ -102,8 +115,9 @@ plotix fplc run.res -o exact/place        # bypass the layout completely
 Any format can be run unattended across a folder of datasets. The batch runner isolates failures (one corrupt export never costs you the rest of the run), skips work that is already done so an interrupted batch resumes on re-run, logs every dataset, and prints a summary of what succeeded and what failed. [Full details](docs/batch_processing.md)
 
 ```bash
-plotix batch configs/batch_example.yaml
-plotix batch --inputs Data/FPLC --log output/batch.log
+plotix batch ~/data/todays_runs                # just a folder
+plotix batch configs/batch_example.yaml        # or a saved config
+plotix batch ~/data/todays_runs --daily        # stable destination, resumable
 ```
 
 ## Adding a format
