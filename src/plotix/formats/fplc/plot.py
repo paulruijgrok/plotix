@@ -71,8 +71,8 @@ _AUX_ROLE = {
     "pH": "accent",
 }
 
-# Fraction marks whose label is not a number close the last band rather than
-# opening a new one.
+# Fraction marks with these labels (or "Waste(Frac)" and the like) close the
+# last band rather than opening a new one.
 _TERMINAL_FRACTION_LABELS = {"waste", "end", "stop"}
 
 
@@ -113,9 +113,16 @@ def _fraction_bands(events: list[Event]) -> tuple[list[Event], float | None]:
     ordered = sorted(events, key=lambda e: e.x)
     if not ordered:
         return [], None
-    last = ordered[-1]
-    if last.label.strip().lower() in _TERMINAL_FRACTION_LABELS:
-        return ordered[:-1], last.x
+    def _terminal(event: Event) -> bool:
+        return event.label.strip().lower().split("(")[0] in _TERMINAL_FRACTION_LABELS
+
+    # A run can end with several terminal marks in a row ("Waste(Frac)" is
+    # logged at every outlet switch); the first of them closes the last band.
+    end = len(ordered)
+    while end > 0 and _terminal(ordered[end - 1]):
+        end -= 1
+    if end < len(ordered):
+        return ordered[:end], ordered[end].x
     return ordered, None
 
 

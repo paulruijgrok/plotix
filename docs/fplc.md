@@ -54,6 +54,8 @@ The shift applied is recorded in `ds.meta["volume_origin"]`. Logbook marks are s
 
 In UNICORN: **File → Export → Export data to ASCII**, with the curves you care about selected. Anything the export contains is parsed; nothing needs to be pre-selected for plotix's benefit. The exported axis is already zeroed at the injection, so `origin` and `trim` do nothing here.
 
+UNICORN 7 writes the same layout but saves it as **`.csv`** (UTF-16, tab-separated, with a `Chrom.1` row on top and bare event units — `Fraction`, `Injection`, `Logbook` — where older versions wrote `(Fractions)` etc.). Both variants are read. Because `.csv` is also what plotix writes for its own source data, folders are *not* scanned for `.csv`; name a UNICORN 7 export directly (`plotix fplc "run 001.csv"`) or rename it to `.asc` to have it picked up from a folder. Its fraction marks are 96-well positions (`1.B.11`) rather than tube numbers, and the run is usually closed by one or more `Waste(Frac)` marks, which end the fraction band rather than opening a new one.
+
 ### File layout
 
 Every curve occupies a *pair* of columns — its own x values then its y values — because detectors are sampled at different rates. Once a curve runs out of samples its columns are padded with blanks, so the block is ragged rather than rectangular:

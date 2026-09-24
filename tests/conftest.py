@@ -41,6 +41,7 @@ def build_asc(
     newline: str = "\r\n",
     include_count_row: bool = True,
     include_logbook: bool = True,
+    unicorn7: bool = False,
 ) -> Path:
     """Write a synthetic UNICORN ASCII export.
 
@@ -53,6 +54,10 @@ def build_asc(
         ``"flat"`` for an isocratic buffer (should be dropped by ``auto``
         auxiliary selection) or ``"gradient"`` for a rising salt gradient
         (should be kept).
+    unicorn7:
+        Mimic a UNICORN 7 export: event units written bare (``Fraction``,
+        not ``(Fractions)``), 96-well fraction labels such as ``1.A.3``, and
+        the run closed by two ``Waste(Frac)`` marks.
     """
     x = np.linspace(0.0, x_max, n)
     uv = sum(gaussian(x, c, h, w) for c, h, w in peaks) + 0.01 * np.sin(x * 7)
@@ -70,6 +75,12 @@ def build_asc(
 
     frac_x = np.linspace(1.0, x_max - 1.0, fractions)
     frac_labels = [str(i + 1) for i in range(fractions)]
+    frac_unit, inj_unit, log_unit = "(Fractions)", "(Injections)", "(Set Marks)"
+    if unicorn7:
+        frac_unit, inj_unit, log_unit = "Fraction", "Injection", "Logbook"
+        frac_labels = [f"1.{'ABCDEFGH'[i // 12]}.{i % 12 + 1}" for i in range(fractions)]
+        frac_x = np.append(frac_x, [x_max - 0.6, x_max - 0.5])
+        frac_labels += ["Waste(Frac)", "Waste(Frac)"]
 
     columns: list[tuple[str, str, list[str], list[str]]] = [
         ("UV", " mAU", [f"{v:9.3f}" for v in x], [f"{v:12.6f}" for v in uv]),
@@ -77,17 +88,17 @@ def build_asc(
         ("Conc", " %B", [f"{v:9.3f}" for v in cond_x], [f"{v:12.6f}" for v in conc]),
         (
             "Fractions",
-            "(Fractions)",
+            frac_unit,
             [f"{v:9.3f}" for v in frac_x],
             [f' "{lab}"' for lab in frac_labels],
         ),
-        ("Inject", "(Injections)", ["    0.500"], ['   "1"']),
+        ("Inject", inj_unit, ["    0.500"], ['   "1"']),
     ]
     if include_logbook:
         columns.append(
             (
                 "Logbook",
-                "(Set Marks)",
+                log_unit,
                 ["   -1.000", "   -1.000", "   -1.000"],
                 [
                     ' "Method Run 9/2/2026, 5:41:13 PM Pacific Daylight Time, '

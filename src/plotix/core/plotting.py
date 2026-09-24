@@ -173,7 +173,11 @@ def add_event_bands(
     edges = [e.x for e in ordered] + [limit]
 
     if label_every is None:
-        label_every = max(1, int(np.ceil(len(ordered) / max_labels)))
+        # ``max_labels`` is calibrated for short numeric labels; wider ones
+        # (96-well positions such as "1.B.11") get proportionally fewer.
+        widest = max(len(e.label.strip()) for e in ordered) or 1
+        budget = max(4, int(max_labels * 2 / max(2, widest)))
+        label_every = max(1, int(np.ceil(len(ordered) / budget)))
 
     trans = ax.get_xaxis_transform()  # x in data coords, y in axes coords
 

@@ -88,6 +88,51 @@ def test_read_asc_can_drop_logbook_events(simple_asc):
     assert read_asc(simple_asc, keep_logbook=True).events_of("logbook")
 
 
+def test_read_asc_accepts_unicorn7_bare_event_units(asc_factory):
+    # UNICORN 7 labels the event columns "Fraction" / "Injection" / "Logbook"
+    # without the parentheses older versions write.
+    ds = read_asc(asc_factory("u7.asc", unicorn7=True, fractions=10))
+    fractions = ds.events_of("fraction")
+    assert [e.label for e in fractions[:2]] == ["1.A.1", "1.A.2"]
+    assert [e.label for e in fractions[-2:]] == ["Waste(Frac)", "Waste(Frac)"]
+    assert len(ds.events_of("injection")) == 1
+    assert ds.events_of("logbook")
+    assert "Fraction" not in ds.curves
+
+
+def test_fraction_bands_drop_every_trailing_waste_mark():
+    from plotix.core.dataset import Event
+    from plotix.formats.fplc.plot import _fraction_bands
+
+    marks = [Event(1.0, "1", "fraction"), Event(2.0, "2", "fraction")]
+    marks += [Event(3.0, "Waste(Frac)", "fraction"), Event(3.1, "Waste(Frac)", "fraction")]
+    bands, end = _fraction_bands(marks)
+    assert [e.label for e in bands] == ["1", "2"]
+    assert end == 3.0
+    assert _fraction_bands(marks[:2]) == (marks[:2], None)
+
+
+def test_event_band_labels_thin_out_for_wide_labels():
+    import matplotlib.pyplot as plt
+
+    from plotix.core.dataset import Event
+    from plotix.core.plotting import add_event_bands
+    from plotix.core.theme import get_theme
+
+    def n_labels(labels: list[str]) -> int:
+        fig, ax = plt.subplots()
+        try:
+            ax.set_xlim(0, len(labels) + 1)
+            add_event_bands(ax, [Event(float(i), lab, "fraction") for i, lab in enumerate(labels)], get_theme())
+            return len(ax.texts)
+        finally:
+            plt.close(fig)
+
+    narrow = n_labels([str(i) for i in range(40)])
+    wide = n_labels([f"1.{'ABCD'[i // 12]}.{i % 12 + 1}" for i in range(40)])
+    assert narrow > wide >= 4
+
+
 def test_read_asc_rejects_a_non_unicorn_file(tmp_path):
     path = tmp_path / "junk.asc"
     path.write_text("this is not a chromatogram\n")

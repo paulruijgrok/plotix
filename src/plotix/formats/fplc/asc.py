@@ -44,11 +44,20 @@ __all__ = ["read_asc", "sniff_asc", "EVENT_UNITS"]
 
 #: y-unit -> event kind. Parenthesised units mark text channels.
 EVENT_UNITS: dict[str, str] = {
+    # UNICORN 5/6 exports parenthesise the event units ...
     "(fractions)": "fraction",
     "(injections)": "injection",
     "(set marks)": "logbook",
     "(logbook)": "logbook",
     "(run log)": "logbook",
+    # ... UNICORN 7 writes them bare.
+    "fraction": "fraction",
+    "fractions": "fraction",
+    "injection": "injection",
+    "injections": "injection",
+    "set marks": "logbook",
+    "logbook": "logbook",
+    "run log": "logbook",
 }
 
 
