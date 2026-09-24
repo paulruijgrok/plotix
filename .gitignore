@@ -25,7 +25,10 @@ htmlcov/
 output/
 *.log
 
-# Data — the example runs under Data/ are committed on purpose: the quick start
-# in the README runs on them, and the .res/.asc pair of the same run is what the
-# binary reader is cross-validated against. Ignore bulk archives only.
-Data/**/*.zip
+# Data — lab data is never committed. The single example run below is the
+# exception: the quick start in the README runs on it, and its .res/.asc pair
+# is what the binary reader is cross-validated against.
+Data/*
+!Data/FPLC/
+Data/FPLC/*
+!Data/FPLC/20260902_PfDh_Nb02P/
